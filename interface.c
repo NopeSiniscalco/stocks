@@ -18,8 +18,8 @@
 //#include <pthread.h>     /* pthread functions and data structures */
 
 void clear(){
-    //FILE *clear=popen("clear","w");
-    //pclose(clear);
+    FILE *clear=popen("clear","w");
+    pclose(clear);
 }
 
 static void sighandler(int signo)
