@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
     int num_items;
     stock_entry *dataset_entries;
+    char *name;
 }stock_dataset;
 
 typedef struct {
@@ -82,6 +83,8 @@ stock_dataset ingest_dataset(char *path, char *ingest_format, int lines_to_skip)
     FILE *fp = fopen(path,"r");
     char buffer[64];
     int i;
+    dataset.name=malloc(strlen(path)+1);
+    strcpy(dataset.name,path);
     for(i=0;i<lines_to_skip;i++){
         fgets(buffer, sizeof(buffer), fp);
     }
@@ -245,7 +248,15 @@ void save_stock_dataset_to_file(stock_dataset dataset, char *filename, char *pri
 }
 
 void plot_stock_dataset(stock_dataset dataset, char *print_type){
-    save_stock_dataset_to_file(dataset, "temp.csv", print_type);
+    ////
+    char *prefix="temp_";
+    char *out_path=malloc(strlen(prefix)+strlen(dataset.name));
+    char *mid_pt=stpcpy(out_path,prefix);
+    strncpy(mid_pt,dataset.name,strlen(dataset.name));
+    //printf("Name: %s\n",out_path);
+    ////
+    //save_stock_dataset_to_file(dataset, "temp.csv", print_type);
+    save_stock_dataset_to_file(dataset, out_path, print_type);
     FILE *gnu_plot=popen("gnuplot &> /dev/null","w");
     fprintf(gnu_plot,"set datafile separator \",\"\n");
     fprintf(gnu_plot,"set xtics rotate\n");
@@ -254,7 +265,19 @@ void plot_stock_dataset(stock_dataset dataset, char *print_type){
         fprintf(gnu_plot,"set timefmt \"%%Y%%m%%d\"\n");
         fprintf(gnu_plot,"set format x \"%%d-%%m-%%y\"\n");
     }
-    fprintf(gnu_plot,"plot \"temp.csv\" using 1:2 with lines\n");
+
+    ////
+    char *pre="plot \"";
+    char *post="\" using 1:2 with lines\n";
+    char *pre_mid_post=calloc(strlen(pre)+strlen(out_path)+strlen(post)+1,sizeof(char));
+    strcat(pre_mid_post,pre);
+    strcat(pre_mid_post,out_path);
+    strcat(pre_mid_post,post);
+    //pre_mid_post[52]='!';
+    //printf("strlen: %d - Final cmd: %s\n",strlen(pre_mid_post),pre_mid_post);
+    ////
+    //fprintf(gnu_plot,"plot \"temp.csv\" using 1:2 with lines\n");
+    fprintf(gnu_plot,pre_mid_post);
     fflush(gnu_plot);
     sleep(1);
     printf("\nType 'q' to exit: ");
