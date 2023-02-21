@@ -18,8 +18,8 @@
 //#include <pthread.h>     /* pthread functions and data structures */
 
 void clear(){
-    FILE *clear=popen("clear","w");
-    pclose(clear);
+    //FILE *clear=popen("clear","w");
+    //pclose(clear);
 }
 
 static void sighandler(int signo)
@@ -249,7 +249,7 @@ void save_stock_dataset_to_file(stock_dataset dataset, char *filename, char *pri
 
 void plot_stock_dataset(stock_dataset dataset, char *print_type){
     ////
-    char *prefix="temp_";
+    char *prefix="temp_";//Note: Do not change without changing corresponding rm statement!
     char *out_path=malloc(strlen(prefix)+strlen(dataset.name));
     char *mid_pt=stpcpy(out_path,prefix);
     strncpy(mid_pt,dataset.name,strlen(dataset.name));
@@ -285,9 +285,16 @@ void plot_stock_dataset(stock_dataset dataset, char *print_type){
     while(strncmp(cli,"q",1)){
         scanf("%c",cli);
     }
-    FILE *rm=popen("rm temp.csv","w");
+    FILE *rm=popen("rm temp_*.csv","w");
     pclose(rm);
     pclose(gnu_plot);
+    free(out_path);
+    free(pre_mid_post);
+}
+
+int free_stock_dataset(stock_dataset dataset){
+    free(dataset.dataset_entries);
+    free(dataset.name);
 }
 
 int main(){
@@ -300,7 +307,7 @@ int main(){
 
     while (true){
         clear();
-        printf("What function do you want?\n[0] - Interactive Generator\n[1] - \n[2] - \n\nEnter your choice: ");
+        printf("What function do you want?\n[0] - Interactive Generator\n[1] - Load Datasets from files\n[2] - \n\nEnter your choice: ");
         int user_choice = -1;
         scanf("%d",&user_choice);
         printf("\n");
@@ -321,11 +328,22 @@ int main(){
                 int curr_lines_to_skip;
                 //char path[50];
                 //scanf("What file path would you like to ingest:",path);
-                //dataset = ingest_dataset("djia_2000_2005.csv","%d,%lf",0);
-                //print_stock_dataset(dataset,"item_num");
-                //plot_stock_dataset(dataset);
 
-                //
+
+
+                //Dataset 1 - DJIA
+                curr_set_path="djia_2000_2005.csv";
+                curr_set_format="%d,%lf";
+                curr_lines_to_skip=0;
+                dataset = ingest_dataset(curr_set_path,curr_set_format,curr_lines_to_skip);
+                //print_stock_dataset(dataset,"item_num");
+                printf("Current dataset path: \'%s\'\n",curr_set_path);
+                printf("Avg Yearly Returns: %.2lf%%\n",calc_database_yearly_returns(dataset)*100);
+                printf("Total Returns: %.2lf%%\n\n",calc_database_total_returns(dataset)*100);
+                plot_stock_dataset(dataset,"date");
+                free_stock_dataset(dataset);
+
+                //Dataset 2 - NVDA Stock
                 curr_set_path="nvda_2010_2019.csv";
                 curr_set_format="%*d,%d,%lf";
                 curr_lines_to_skip=1;
@@ -335,6 +353,9 @@ int main(){
                 printf("Avg Yearly Returns: %.2lf%%\n",calc_database_yearly_returns(dataset)*100);
                 printf("Total Returns: %.2lf%%\n\n",calc_database_total_returns(dataset)*100);
                 plot_stock_dataset(dataset,"date");
+                free_stock_dataset(dataset);
+
+
 
             }//
             //else if(user_choice==2){}//
