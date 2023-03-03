@@ -26,21 +26,23 @@ static void sighandler(int signo)
 {
 	if (signo == SIGINT)
 	{
-        clear();
+        //clear();
 		printf("\nProgram quit by user - Goodbye!\n\n");
 		exit(0);
 	}
 }
 
+
+
 typedef struct {
     int item_num;
     int date;
     double price;
-}stock_entry;
+}data_pt;
 
 typedef struct {
     int num_items;
-    stock_entry *dataset_entries;
+    data_pt *dataset_entries;
     char *name;
 }stock_dataset;
 
@@ -48,6 +50,11 @@ typedef struct {
     int num_sets;
     stock_dataset *datasets;
 }dataset_bundle;
+
+typedef struct {
+    int n;
+    data_pt *entries;
+}time_series;
 
 double gen_normal_rand_sample(){
     double ans;
@@ -78,7 +85,7 @@ stock_dataset ingest_dataset(char *path, char *ingest_format, int lines_to_skip)
     int upper=125;
     stock_dataset dataset;
     int n=0;
-    dataset.dataset_entries=calloc(upper,sizeof(stock_entry));
+    dataset.dataset_entries=calloc(upper,sizeof(data_pt));
     //Open input file
     FILE *fp = fopen(path,"r");
     char buffer[64];
@@ -96,7 +103,7 @@ stock_dataset ingest_dataset(char *path, char *ingest_format, int lines_to_skip)
             //Enlarge struct array if needed and assign vars
             if(!(n<upper)){
                 upper*=2;
-                dataset.dataset_entries=realloc(dataset.dataset_entries,upper*sizeof(stock_entry));
+                dataset.dataset_entries=realloc(dataset.dataset_entries,upper*sizeof(data_pt));
             }  
             dataset.dataset_entries[n].date=date;
             dataset.dataset_entries[n].price=p;
@@ -105,7 +112,7 @@ stock_dataset ingest_dataset(char *path, char *ingest_format, int lines_to_skip)
         }
     }
     fclose(fp);
-    dataset.dataset_entries=realloc(dataset.dataset_entries,(n)*sizeof(stock_entry));
+    dataset.dataset_entries=realloc(dataset.dataset_entries,(n)*sizeof(data_pt));
     dataset.num_items=n;
     return dataset;
 }
@@ -113,30 +120,21 @@ stock_dataset ingest_dataset(char *path, char *ingest_format, int lines_to_skip)
 stock_dataset gen_stock_dataset(int n, double initial_price, double growth_mean, double growth_std_dev){
     stock_dataset dataset;
     dataset.num_items=n;
-    dataset.dataset_entries=calloc(n,sizeof(stock_entry));
-
-    double daily_std_dev=(growth_std_dev/250);
+    dataset.dataset_entries=calloc(n,sizeof(data_pt));
+    ////
+    double daily_std_dev=(growth_std_dev/sqrt(250));
     //printf("\nDaily Std Dev: %lf\n\n",daily_std_dev);
     double daily_growth=(pow(growth_mean+1,1/250.0))-1;
     //printf("\nDaily growth target calculated to be:%lf\n\n",daily_growth);
-
+    ////
     int i=0;
     dataset.dataset_entries[i].item_num=i;
     dataset.dataset_entries[i].price=initial_price;
     for(i=1;i<n;i++){
-        //double rand_price=dataset.dataset_entries[i-1].price*(1+(gen_normal_rand_sample()*daily_std_dev)+daily_growth);
         double rand_price=dataset.dataset_entries[i-1].price*(1+gen_normal_rand_sample()*daily_std_dev+daily_growth);
-        //printf("Price generates: %lf\n",rand_price);
         dataset.dataset_entries[i].item_num=i;
         dataset.dataset_entries[i].price=rand_price;
     }
-    /*
-    printf("\nPrinting Dataset that was made:\n");
-    for(i=0;i<n;i++){
-        printf("i: %d - price: %lf\n",dataset.dataset_entries[i].item_num,dataset.dataset_entries[i].price);
-    }
-    printf("Finished Printing!\n");
-    */
     return dataset;
 }
 
@@ -160,10 +158,17 @@ double calc_database_total_returns(stock_dataset dataset){
 }
 
 double calc_database_std_dev(stock_dataset dataset){
-    double calculated_std_dev;
-
-
-    return calculated_std_dev;
+    double std_dev=0;;
+    double returns=calc_database_total_returns(dataset);//total returns
+    returns=(pow(returns+1,1/250.0))-1;//daily returns
+    int i;
+    for(i=1;i<dataset.num_items;i++){
+        std_dev+=pow(((dataset.dataset_entries[i].price-dataset.dataset_entries[i-1].price)/dataset.dataset_entries[i-1].price)-(returns),2);
+    }
+    std_dev/=dataset.num_items-1;//MAKE THIS -2?!?!?!?!?!
+    std_dev=sqrt(std_dev);
+    std_dev*=sqrt(250);
+    return std_dev;
 }
 
 void interactive_dataset_gen_and_plot(){
@@ -175,18 +180,19 @@ void interactive_dataset_gen_and_plot(){
     int num_sets,j,days;
     double yr_growth, yr_std_dev, start_price;
     printf("\nHow many simulations shall we make: ");
-    scanf("%d",&num_sets);
+    scanf(" %d",&num_sets);
     printf("How many days long (1yr = 250 days): ");
-    scanf("%d",&days);
+    scanf(" %d",&days);
     printf("Starting at price: ");
-    scanf("%lf",&start_price);
+    scanf(" %lf",&start_price);
     printf("What yearly growth target (in %%): ");
-    scanf("%lf",&yr_growth);
+    scanf(" %lf",&yr_growth);
     printf("What yearly std dev target (in %%): ");
-    scanf("%lf",&yr_std_dev);
+    scanf(" %lf",&yr_std_dev);
     printf("%d iterations %d days long starting at a price of %.2lf with %.2lf%% growth and %.2lf%% std dev!\n",num_sets,days,start_price,yr_growth,yr_std_dev);
     //
     double avg_returns=0;
+    double avg_devs=0;
     for(j=0;j<num_sets;j++){
         stock_dataset ret=gen_stock_dataset(days, start_price, yr_growth/100, yr_std_dev/100);
         //File Save
@@ -202,11 +208,16 @@ void interactive_dataset_gen_and_plot(){
         //printf("\nDone Saving to File!\n");
         //Calc Returns
         avg_returns+=calc_database_yearly_returns(ret);
+        avg_devs+=calc_database_std_dev(ret);
         //printf("Avg returns sum: %lf\n",avg_returns);
         free(ret.dataset_entries);
     }
     avg_returns/=num_sets;
-    printf("Calculated avg return was: %.2lf% \n\n",avg_returns*100);
+    avg_devs/=num_sets;
+    printf("Calculated avg return was: %.2lf%% \n\n",avg_returns*100);
+    //
+    printf("Calculated std_dev? : %.2lf%%\n",avg_devs*100);
+    //
 
     if(num_sets<=10000){
         printf("Graphing...\n");
@@ -217,9 +228,9 @@ void interactive_dataset_gen_and_plot(){
         fflush(fp_gnu);
         sleep(1);
         printf("\nType 'q' to exit: ");
-        char cli[1];
+        char cli[1]="";
         while(strncmp(cli,"q",1)){
-            scanf("%c",cli);
+            scanf(" %c",cli);
         }
         pclose(fp_gnu);
     }
@@ -263,7 +274,7 @@ void plot_stock_dataset(stock_dataset dataset, char *print_type){
     if(!strcmp(print_type,"date")){
         fprintf(gnu_plot,"set xdata time\n");
         fprintf(gnu_plot,"set timefmt \"%%Y%%m%%d\"\n");
-        fprintf(gnu_plot,"set format x \"%%d-%%m-%%y\"\n");
+        fprintf(gnu_plot,"set format x \"%%Y%%m%%d\"\n");
     }
 
     ////
@@ -283,7 +294,7 @@ void plot_stock_dataset(stock_dataset dataset, char *print_type){
     printf("\nType 'q' to exit: ");
     char cli[1];
     while(strncmp(cli,"q",1)){
-        scanf("%c",cli);
+        scanf(" %c",cli);
     }
     FILE *rm=popen("rm temp_*.csv","w");
     pclose(rm);
@@ -292,10 +303,17 @@ void plot_stock_dataset(stock_dataset dataset, char *print_type){
     free(pre_mid_post);
 }
 
-int free_stock_dataset(stock_dataset dataset){
+void free_stock_dataset(stock_dataset dataset){
     free(dataset.dataset_entries);
     free(dataset.name);
 }
+
+void gen_time_series_func_data(stock_dataset dataset){
+
+}
+
+
+
 
 int main(){
     signal(SIGINT, sighandler);
@@ -306,14 +324,21 @@ int main(){
     clock_t begin = clock();
 
     while (true){
+        fflush(stdout);
         clear();
-        printf("What function do you want?\n[0] - Interactive Generator\n[1] - Load Datasets from files\n[2] - \n\nEnter your choice: ");
+        printf("What function do you want?\n");
+        printf("[0] - Interactive Generator\n");
+        printf("[1] - Load Datasets from files\n");
+        printf("[2] - Get and save datasets from WRDS\n");
+        printf("[3] - Graph stock data in /data\n");
+        printf("\nEnter your choice: ");
+
         int user_choice = -1;
-        scanf("%d",&user_choice);
+        scanf(" %d",&user_choice);
         printf("\n");
         if (user_choice==-1){
             printf("Error in choice! (Got -1)\n");
-            exit(1);
+            break;
         }
         else{
             clear();
@@ -330,7 +355,7 @@ int main(){
                 //scanf("What file path would you like to ingest:",path);
 
 
-
+                ///*
                 //Dataset 1 - DJIA
                 curr_set_path="djia_2000_2005.csv";
                 curr_set_format="%d,%lf";
@@ -340,8 +365,12 @@ int main(){
                 printf("Current dataset path: \'%s\'\n",curr_set_path);
                 printf("Avg Yearly Returns: %.2lf%%\n",calc_database_yearly_returns(dataset)*100);
                 printf("Total Returns: %.2lf%%\n\n",calc_database_total_returns(dataset)*100);
+                printf("Calculated std_dev? : %.2lf%%\n",calc_database_std_dev(dataset)*100);
+                //
                 plot_stock_dataset(dataset,"date");
                 free_stock_dataset(dataset);
+                //*/
+
 
                 //Dataset 2 - NVDA Stock
                 curr_set_path="nvda_2010_2019.csv";
@@ -352,14 +381,75 @@ int main(){
                 printf("Current dataset path: \'%s\'\n",curr_set_path);
                 printf("Avg Yearly Returns: %.2lf%%\n",calc_database_yearly_returns(dataset)*100);
                 printf("Total Returns: %.2lf%%\n\n",calc_database_total_returns(dataset)*100);
+                printf("Calculated std_dev? : %.2lf%%\n",calc_database_std_dev(dataset)*100);
+                //
                 plot_stock_dataset(dataset,"date");
                 free_stock_dataset(dataset);
 
 
 
             }//
-            //else if(user_choice==2){}//
-            //else if(user_choice==3){}//
+            else if(user_choice==2){
+                clear();
+                printf("Got choice %d!\n",user_choice);
+                
+                char cli[24];
+                FILE *wrds_py=popen("python wrds_interface.py > /dev/null","w");
+                while(true){
+                    printf("\nEnter the ticker you want saved ('q' to exit): ");
+                    scanf(" %s",cli);
+                    if(strcmp(cli,"q")){
+                        printf("Got: '%s'\n",cli);
+                        fprintf(wrds_py,"%s\n",cli);    
+                        fflush(wrds_py);                    
+                    }
+                    else{
+                        break;
+                    }
+                }
+                printf("Closing wrds_py...\n");
+                fprintf(wrds_py,"q");
+                pclose(wrds_py);
+                printf("Closed!\n\n\n");
+            }
+            else if(user_choice==3){
+                printf("Graphing...\n");
+                FILE *fp_gnu;
+                fp_gnu = popen("gnuplot","w");
+                //
+                fprintf(fp_gnu,"set datafile separator \",\"\n");
+                fprintf(fp_gnu,"set xtics rotate\n");
+                fprintf(fp_gnu,"set xdata time\n");
+                fprintf(fp_gnu,"set key top left\n");
+                fprintf(fp_gnu,"fmt = \"%%Y-%%m-%%d\"\n");
+                fprintf(fp_gnu,"set timefmt fmt\n");
+                fprintf(fp_gnu,"set format x fmt\n");
+                //Setting xrange
+                printf("x-range start date (yyy-mm-dd) - 'q' for max: ");
+                char in_cli[64];
+                scanf(" %s",in_cli);
+                if(strncmp(in_cli,"q",1)){
+                    in_cli[strcspn(in_cli,"\n")]='\0';
+                    fprintf(fp_gnu,"set xrange [strptime(fmt, \"");
+                    fprintf(fp_gnu,in_cli);
+                    fprintf(fp_gnu,"\"):*]\n");
+                }
+                //
+                fprintf(fp_gnu, "FILES = system(\"ls -1 ./data/*.csv\")\n");
+                fprintf(fp_gnu, "plot for [data in FILES] data every ::1 u 2:3 with lines title data \n");
+                fflush(fp_gnu);
+                //
+                sleep(1);
+                printf("\nType 'q' to exit: ");
+                char cli[1]="";
+                while(strncmp(cli,"q",1)){
+                    scanf(" %s",cli);
+                }
+                pclose(fp_gnu);
+            }
+            else if(user_choice==4){
+                stock_dataset amd;
+            }
         }
     }
 
